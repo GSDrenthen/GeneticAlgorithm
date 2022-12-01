@@ -1,13 +1,13 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Script properties
-% name : 
-% Description :
-% Arguments :
+% name : GeneticAlgorithm.m
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Version History
 % 20201711 0.1 Gerald Drenthen
+% 20220305 0.2 Gerald Drenthen
+% 20221010 1.0 Gerald Drenthen
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15,7 +15,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 close all; clearvars
-int_cutoff = 4e-3; % value is chosen such that exp(-1*b*D) < 0.05 for b=200
+int_cutoff = 4e-3;
 noise_lvl = 1;
 S0 = 100;
 NbValue = 15;
@@ -27,6 +27,7 @@ parents = 20;
 offspring = 40;
 mutations = 40;
 ncores = 12;
+allow_multiple_bvals = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %  Genetic Algorithm
@@ -125,8 +126,15 @@ for random = 1:50
                 nPop = randi(parents,[2 1]); while nPop(1) == nPop(2); nPop = randi(parents,[2 1]); end
 
                 Child = zeros(length(bValSet),1);
-                indx1 = find(Population(:,nPop(1)));
-                indx2 = find(Population(:,nPop(2)));
+                if allow_multiple_bvals == 1
+                    indx1 = []; for i = 0:max(Population(:,nPop(1)))-1; indx1 = [indx1; find(Population(:,nPop(1))>i)]; end                
+                    indx2 = []; for i = 0:max(Population(:,nPop(2)))-1; indx2 = [indx2; find(Population(:,nPop(2))>i)]; end                
+                    indx1 = sort(indx1);
+                    indx2 = sort(indx2);
+                else                
+                    indx1 = find(Population(:,nPop(1)));
+                    indx2 = find(Population(:,nPop(2)));
+                end
 
                 for ll = 1:NbValue
                       if randi([0 1],1) == 0
@@ -142,8 +150,13 @@ for random = 1:50
                          indx = find(Child(2:end));
                          Child(1+indx(randi(length(indx),1))) = 0;
                          Child(randi(length(bValSet),1)) = 1;
-                         while nnz(Child) > NbValue; Child(1+indx(randi(length(indx),1))) = 0; end
-                         while nnz(Child) < NbValue; Child((randi(length(bValSet),1))) = 1; end
+                         if allow_multiple_bvals == 1
+                            while sum(Child) > NbValue; tmp=1+randi(length(bValSet),1); Child(tmp) = Child(tmp) -1; end
+                            while sum(Child) < NbValue; tmp=randi(length(bValSet),1); Child(tmp) = Child(tmp) + 1; end
+                         else
+                            while nnz(Child) > NbValue; Child(1+indx(randi(length(indx),1))) = 0; end
+                            while nnz(Child) < NbValue; Child((randi(length(bValSet),1))) = 1; end
+                         end
                     end
                 %end
                 Population(Child>0,parents+nn) = 1;
@@ -156,16 +169,29 @@ for random = 1:50
                     nPop = randi(parents+offspring,[1 1]);
                     Mutation = Population(:,nPop(1))>0;
                     numMut = randi(NbValue-1,1);
-                    indx = find(Mutation(2:end));
-                    Mutation(indx+1) = 0;
-                    Mutation(randi(length(bValSet),numMut,1)) = 1;
-                    while nnz(Mutation) > NbValue; Mutation(randi(length(bValSet),1)) = 0; end
-                    while nnz(Mutation) < NbValue; Mutation(randi(length(bValSet),1)) = 1; end
+                    if allow_multiple_bvals == 1
+                        indx = []; for i = 0:max(Mutation)-1; indx = [indx; find(Mutation>i)]; end                
+                        indx = sort(indx(2:end));
+                        tmp=indx(randi(length(indx),numMut,1)); Mutation(tmp) = Mutation(tmp) - 1;
+                        while sum(Mutation) > NbValue; tmp=find(Mutation); indx=tmp(randi(nnz(Mutation))); Mutation(indx) = Mutation(indx) - 1; end
+                        while sum(Mutation) < NbValue; tmp=randi(length(bValSet),1); Mutation(tmp) = Mutation(tmp) + 1; end                            
+                    else
+                        indx = find(Mutation(2:end));                        
+                        Mutation(indx+1) = 0;
+                        Mutation(randi(length(bValSet),numMut,1)) = 1;
+                        while nnz(Mutation) > NbValue; Mutation(randi(length(bValSet),1)) = 0; end
+                        while nnz(Mutation) < NbValue; Mutation(randi(length(bValSet),1)) = 1; end
+                    end
                 else % Targeted mutations
                     nPop = randi(parents+offspring,[1 1]);
                     Mutation = Population(:,nPop(1))>0;
                     numMut = randi(NbValue-1,1);
-                    indx = find(Mutation(2:end));
+                    if allow_multiple_bvals == 1
+                        indx = []; for i = 0:max(Mutation)-1; indx = [indx; find(Mutation>i)]; end                
+                        indx = sort(indx(2:end));                        
+                    else
+                        indx = find(Mutation(2:end));
+                    end                    
                     TargMut = randi(4,numMut,1);
                     i = 1;
                     for ll = 1:length(TargMut)
@@ -182,19 +208,26 @@ for random = 1:50
                         if indx_mut(ll) > length(bValSet)-1; indx_mut(ll) = length(bValSet)-1; end
                         if indx_mut(ll) < 1; indx_mut(ll) = 1; end
                     end
-                    Mutation(indx+1) = 0;
-                    Mutation(indx_mut+1) = 1;
-                    while nnz(Mutation) > NbValue; Mutation(randi(length(bValSet),1)) = 0; end
-                    while nnz(Mutation) < NbValue; Mutation(randi(length(bValSet),1)) = 1; end                  
+                    if allow_multiple_bvals == 1
+                       if max(Mutation(indx))>1
+                          for i = 1:length(indx);  Mutation(indx(i)) = Mutation(indx(i)) - 1; end
+                       else
+                           Mutation(indx) = Mutation(indx) - 1;
+                       end
+                       Mutation(indx_mut) = Mutation(indx_mut) + 1;
+                       while sum(Mutation) > NbValue; tmp=find(Mutation); indx=tmp(randi(nnz(Mutation))); Mutation(indx) = Mutation(indx) - 1; end
+                       while sum(Mutation) < NbValue; tmp=randi(length(bValSet),1); Mutation(tmp) = Mutation(tmp) + 1; end
+                    else
+                        Mutation(indx+1) = 0;
+                        Mutation(indx_mut+1) = 1;                        
+                        while nnz(Mutation) > NbValue; Mutation(randi(length(bValSet),1)) = 0; end
+                        while nnz(Mutation) < NbValue; Mutation(randi(length(bValSet),1)) = 1; end
+                    end            
                 end
                 Population(Mutation,parents+offspring+nn) = 1;
             end    
         end
-        if nnz(Population) ~= NbValue*PopulationSize
-            disp('yellp')
-        end
-
         Population_3D(:,:,nEvol) = Population;
     end
-    save(['GeneticAlgorithm_' num2str(nEvol) '_generations_' num2str(gt(1)) '_gtFint_' num2str(NbValue) '_nBval_noseed_fint_ul_' num2str(int_cutoff) '_' num2str(random) '_SNR50.mat'])
+    save('GeneticAlgorithm.mat')
 end
